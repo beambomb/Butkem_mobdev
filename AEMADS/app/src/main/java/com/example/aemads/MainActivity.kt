@@ -799,6 +799,21 @@ fun ProfileTab(userSession: UserSession?, viewModel: DashboardViewModel, onLogou
     }
 }
 
+fun formatUtcToLocal(utcTime: String): String {
+    try {
+        val parser = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault())
+        parser.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        val cleanUtc = utcTime.substringBefore(".").substringBefore("+")
+        val date = parser.parse(cleanUtc)
+        
+        val formatter = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm:ss", java.util.Locale.getDefault())
+        formatter.timeZone = java.util.TimeZone.getDefault()
+        return formatter.format(date!!)
+    } catch (e: Exception) {
+        return utcTime.take(19).replace("T", " ")
+    }
+}
+
 // --- EXPORT FUNCTIONS ---
 fun exportToCsv(context: Context, dataList: List<EnergyLog>, shopName: String) {
     try {
@@ -809,7 +824,8 @@ fun exportToCsv(context: Context, dataList: List<EnergyLog>, shopName: String) {
         val writer = FileOutputStream(file).bufferedWriter()
         writer.write("Timestamp,Shop Name,Power kW,Cos Phi,THD,OEE Score\n")
         dataList.forEach { log ->
-            writer.write("${log.created_at},${log.lini_name},${log.power_kw},${log.power_factor},${log.thd_value},${log.oee_score}\n")
+            val localTime = formatUtcToLocal(log.created_at)
+            writer.write("${localTime},${log.lini_name},${log.power_kw},${log.power_factor},${log.thd_value},${log.oee_score}\n")
         }
         writer.close()
         
@@ -848,8 +864,8 @@ fun exportToPdf(context: Context, dataList: List<EnergyLog>, shopName: String) {
         yPosition += 30f
         
         dataList.take(20).forEach { log ->
-            val shortTime = log.created_at.substringBefore(".").takeLast(8)
-            canvas.drawText(shortTime, 40f, yPosition, paint)
+            val localTime = formatUtcToLocal(log.created_at)
+            canvas.drawText(localTime, 40f, yPosition, paint)
             canvas.drawText(log.power_kw.toString(), 220f, yPosition, paint)
             canvas.drawText(log.power_factor.toString(), 320f, yPosition, paint)
             canvas.drawText(log.oee_score.toString(), 420f, yPosition, paint)

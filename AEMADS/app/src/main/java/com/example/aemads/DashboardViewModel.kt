@@ -30,6 +30,8 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.json.doubleOrNull
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -204,7 +206,16 @@ class DashboardViewModel : ViewModel() {
                 launch {
                     changes.collect { action ->
                         try {
-                            val newLog = json.decodeFromJsonElement<EnergyLog>(action.record)
+                            val record = action.record
+                            val newLog = EnergyLog(
+                                id = record["id"]?.jsonPrimitive?.longOrNull ?: 0L,
+                                lini_name = record["lini_name"]?.jsonPrimitive?.content ?: "",
+                                power_kw = record["power_kw"]?.jsonPrimitive?.doubleOrNull ?: 0.0,
+                                power_factor = record["power_factor"]?.jsonPrimitive?.doubleOrNull ?: 0.0,
+                                thd_value = record["thd_value"]?.jsonPrimitive?.doubleOrNull ?: 0.0,
+                                oee_score = record["oee_score"]?.jsonPrimitive?.doubleOrNull ?: 0.0,
+                                created_at = record["created_at"]?.jsonPrimitive?.content ?: ""
+                            )
                             
                             // 1. Calculate Alert State for the incoming log (for Global Heatmap)
                         val calculatedState = when {
