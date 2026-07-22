@@ -103,6 +103,7 @@ class DashboardViewModel : ViewModel() {
                 val session = UserSession(emailInput, metadataName, plant)
                 _currentUserSession.value = session
                 _loginState.value = LoginState.Success(session)
+                fetchInitialData()
             } catch (e: Exception) {
                 e.printStackTrace()
                 val cleanError = e.message?.substringBefore("URL:")?.trim() ?: "Login failed"
