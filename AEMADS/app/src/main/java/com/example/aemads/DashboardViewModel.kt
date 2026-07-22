@@ -74,7 +74,7 @@ class DashboardViewModel : ViewModel() {
     val globalHeatmapState = _globalHeatmapState.asStateFlow()
 
     private val _uploadingReport = MutableStateFlow(false)
-    val uploadingReport = _uploadingReport.asStateFlow()
+    val uploadingReport: StateFlow<Boolean> = _uploadingReport
 
     private val _dataList = MutableStateFlow<List<EnergyLog>>(emptyList())
     val dataList: StateFlow<List<EnergyLog>> = _dataList.asStateFlow()
@@ -201,6 +201,8 @@ class DashboardViewModel : ViewModel() {
                 }
                 _globalHeatmapState.value = newMap
 
+                fetchReports() // Fetch reports along with global heatmap update
+
                 val initialData = supabase.postgrest["energy_logs"]
                     .select {
                         filter {
@@ -305,8 +307,8 @@ class DashboardViewModel : ViewModel() {
                 
                 supabase.postgrest["damage_reports"].insert(newReport)
                 
-                // Fetch updated reports
-                fetchReports()
+                _uploadingReport.value = false
+                fetchReports() // Refresh list after uploading
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
@@ -337,6 +339,27 @@ class DashboardViewModel : ViewModel() {
             } catch (e: Exception) {
                 e.printStackTrace()
             }
+        }
+    }
+
+    suspend fun fetchDataForExport(shopName: String, startMillis: Long?, endMillis: Long?): List<EnergyLog> {
+        return try {
+            val startDate = startMillis?.let { java.time.Instant.ofEpochMilli(it).toString() } ?: "1970-01-01T00:00:00Z"
+            // endMillis is 00:00:00 of the selected end date, so we add 24 hours (86400000L) to cover the whole day
+            val endDate = endMillis?.let { java.time.Instant.ofEpochMilli(it + 86400000L).toString() } ?: "2099-01-01T00:00:00Z"
+            
+            supabase.postgrest["energy_logs"]
+                .select {
+                    filter {
+                        eq("lini_name", shopName)
+                        gte("created_at", startDate)
+                        lte("created_at", endDate)
+                    }
+                    order("created_at", Order.DESCENDING)
+                }.decodeList<EnergyLog>()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
         }
     }
 }

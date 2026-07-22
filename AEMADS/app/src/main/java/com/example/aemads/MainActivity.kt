@@ -60,6 +60,9 @@ import com.patrykandpatrick.vico.compose.chart.Chart
 import com.patrykandpatrick.vico.compose.chart.line.lineChart
 import com.patrykandpatrick.vico.compose.chart.line.lineSpec
 import com.patrykandpatrick.vico.compose.component.shape.shader.verticalGradient
+import androidx.compose.material3.DateRangePicker
+import androidx.compose.material3.rememberDateRangePickerState
+import kotlinx.coroutines.launch
 import com.patrykandpatrick.vico.core.entry.ChartEntryModelProducer
 import com.patrykandpatrick.vico.core.entry.FloatEntry
 import coil.compose.AsyncImage
@@ -553,8 +556,11 @@ fun DashboardTab(viewModel: DashboardViewModel, session: UserSession?) {
             
             // EXPORT BUTTON
             var showExportMenu by remember { mutableStateOf(false) }
+            var showDateDialog by remember { mutableStateOf(false) }
+            var exportFormat by remember { mutableStateOf("") }
             val context = androidx.compose.ui.platform.LocalContext.current
             val currentShop = session?.plant ?: "Global_Overview"
+            val coroutineScope = rememberCoroutineScope()
 
             Box {
                 IconButton(onClick = { showExportMenu = true }) {
@@ -569,17 +575,41 @@ fun DashboardTab(viewModel: DashboardViewModel, session: UserSession?) {
                         text = { Text("Export to CSV", color = Color.White) },
                         onClick = {
                             showExportMenu = false
-                            exportToCsv(context, dataList, currentShop)
+                            exportFormat = "csv"
+                            showDateDialog = true
                         }
                     )
                     DropdownMenuItem(
                         text = { Text("Export to PDF", color = Color.White) },
                         onClick = {
                             showExportMenu = false
-                            exportToPdf(context, dataList, currentShop)
+                            exportFormat = "pdf"
+                            showDateDialog = true
                         }
                     )
                 }
+            }
+            
+            if (showDateDialog) {
+                ExportDateRangeDialog(
+                    onDismiss = { showDateDialog = false },
+                    onExport = { startMillis, endMillis ->
+                        showDateDialog = false
+                        coroutineScope.launch {
+                            Toast.makeText(context, "Fetching data for export...", Toast.LENGTH_SHORT).show()
+                            val data = viewModel.fetchDataForExport(currentShop, startMillis, endMillis)
+                            if (data.isEmpty()) {
+                                Toast.makeText(context, "No data found for this range.", Toast.LENGTH_SHORT).show()
+                                return@launch
+                            }
+                            if (exportFormat == "csv") {
+                                exportToCsv(context, data, currentShop)
+                            } else {
+                                exportToPdf(context, data, currentShop)
+                            }
+                        }
+                    }
+                )
             }
         }
         
@@ -741,7 +771,8 @@ fun ReportsTab(viewModel: DashboardViewModel) {
                 items(reports) { report ->
                     Card(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), colors = CardDefaults.cardColors(containerColor = SurfaceNavy)) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            Text(report.timestamp, color = TextGray, fontSize = 12.sp)
+                            val localTime = try { formatUtcToLocal(report.timestamp) } catch (e: Exception) { report.timestamp }
+                            Text(localTime, color = TextGray, fontSize = 12.sp)
                             Text("${report.shopName} | ${if (report.relatedAnomaly.isEmpty()) "No Anomaly Linked" else report.relatedAnomaly}", color = NeonCyan, fontSize = 12.sp)
                             Spacer(Modifier.height(8.dp))
                             if (report.imageUrl.isNotEmpty()) {
@@ -921,4 +952,34 @@ fun exportToPdf(context: Context, dataList: List<EnergyLog>, shopName: String) {
         e.printStackTrace()
         Toast.makeText(context, "Failed to export PDF", Toast.LENGTH_SHORT).show()
     }
+}
+
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+fun ExportDateRangeDialog(onDismiss: () -> Unit, onExport: (Long?, Long?) -> Unit) {
+    val dateRangePickerState = androidx.compose.material3.rememberDateRangePickerState()
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { androidx.compose.material3.Text("Select Date Range for Export") },
+        text = {
+            androidx.compose.material3.DateRangePicker(
+                state = dateRangePickerState,
+                modifier = Modifier.fillMaxWidth().height(400.dp)
+            )
+        },
+        confirmButton = {
+            androidx.compose.material3.Button(
+                onClick = { onExport(dateRangePickerState.selectedStartDateMillis, dateRangePickerState.selectedEndDateMillis) },
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = NeonCyan)
+            ) {
+                androidx.compose.material3.Text("Export", color = Color.Black)
+            }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) { androidx.compose.material3.Text("Cancel", color = Color.White) }
+        },
+        containerColor = SurfaceNavy,
+        titleContentColor = Color.White,
+        textContentColor = Color.White
+    )
 }
