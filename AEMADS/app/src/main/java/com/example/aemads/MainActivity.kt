@@ -314,6 +314,7 @@ fun SignUpScreen(navController: NavHostController, viewModel: DashboardViewModel
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(context: MainActivity, viewModel: DashboardViewModel) {
     var selectedTab by remember { mutableStateOf(0) }
@@ -326,6 +327,8 @@ fun MainScreen(context: MainActivity, viewModel: DashboardViewModel) {
     var reportNotes by remember { mutableStateOf("") }
     var reportShop by remember { mutableStateOf("") }
     var reportAnomaly by remember { mutableStateOf("") }
+    var expandedShop by remember { mutableStateOf(false) }
+    val shops = listOf("Shop 1 - Stamping & Press", "Shop 2 - Body & Welding", "Shop 3 - Paint Shop", "Shop 4 - General Assembly")
     
     // Set default shop when session is available
     LaunchedEffect(session) {
@@ -398,12 +401,29 @@ fun MainScreen(context: MainActivity, viewModel: DashboardViewModel) {
                         Image(bitmap = it.asImageBitmap(), contentDescription = "Captured", modifier = Modifier.height(150.dp).fillMaxWidth(), contentScale = ContentScale.Crop)
                     }
                     Spacer(Modifier.height(16.dp))
-                    OutlinedTextField(
-                        value = reportShop, 
-                        onValueChange = { reportShop = it },
-                        label = { Text("Shop Context") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    
+                    ExposedDropdownMenuBox(expanded = expandedShop, onExpandedChange = { expandedShop = !expandedShop }) {
+                        OutlinedTextField(
+                            value = reportShop, 
+                            onValueChange = {}, 
+                            readOnly = true,
+                            label = { Text("Shop Context") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedShop) },
+                            modifier = Modifier.fillMaxWidth().menuAnchor()
+                        )
+                        ExposedDropdownMenu(expanded = expandedShop, onDismissRequest = { expandedShop = false }) {
+                            shops.forEach { selectionOption ->
+                                DropdownMenuItem(
+                                    text = { Text(selectionOption) },
+                                    onClick = {
+                                        reportShop = selectionOption
+                                        expandedShop = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
                         value = reportAnomaly, 

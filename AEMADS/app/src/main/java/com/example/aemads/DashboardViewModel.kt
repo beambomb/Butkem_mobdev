@@ -27,6 +27,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.text.SimpleDateFormat
@@ -202,9 +203,10 @@ class DashboardViewModel : ViewModel() {
 
                 launch {
                     changes.collect { action ->
-                        val newLog = action.decodeRecord<EnergyLog>()
-                        
-                        // 1. Calculate Alert State for the incoming log (for Global Heatmap)
+                        try {
+                            val newLog = json.decodeFromJsonElement<EnergyLog>(action.record)
+                            
+                            // 1. Calculate Alert State for the incoming log (for Global Heatmap)
                         val calculatedState = when {
                             newLog.power_kw > 150.0 -> AlertState.SPIKE
                             newLog.power_factor < 0.85 && newLog.thd_value > 10.0 -> AlertState.DRIFT
@@ -226,6 +228,9 @@ class DashboardViewModel : ViewModel() {
                             }
                             _dataList.value = currentList
                             evaluateThreshold(newLog)
+                        }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
                         }
                     }
                 }
