@@ -62,6 +62,9 @@ import com.patrykandpatrick.vico.compose.chart.line.lineSpec
 import com.patrykandpatrick.vico.compose.component.shape.shader.verticalGradient
 import androidx.compose.material3.DateRangePicker
 import androidx.compose.material3.rememberDateRangePickerState
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DatePickerDefaults
+import androidx.compose.material3.DateRangePickerDefaults
 import kotlinx.coroutines.launch
 import com.patrykandpatrick.vico.core.entry.ChartEntryModelProducer
 import com.patrykandpatrick.vico.core.entry.FloatEntry
@@ -947,39 +950,68 @@ fun exportToPdf(context: Context, dataList: List<EnergyLog>, shopName: String) {
         pdfDocument.writeTo(FileOutputStream(file))
         pdfDocument.close()
         
-        Toast.makeText(context, "PDF Saved to Downloads: $fileName", Toast.LENGTH_LONG).show()
+        Toast.makeText(context, "PDF Saved to Downloads: $fileName", Toast.LENGTH_SHORT).show()
     } catch (e: Exception) {
         e.printStackTrace()
         Toast.makeText(context, "Failed to export PDF", Toast.LENGTH_SHORT).show()
     }
 }
 
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExportDateRangeDialog(onDismiss: () -> Unit, onExport: (Long?, Long?) -> Unit) {
-    val dateRangePickerState = androidx.compose.material3.rememberDateRangePickerState()
-    androidx.compose.material3.AlertDialog(
+    val dateRangePickerState = rememberDateRangePickerState()
+    DatePickerDialog(
         onDismissRequest = onDismiss,
-        title = { androidx.compose.material3.Text("Select Date Range for Export") },
-        text = {
-            androidx.compose.material3.DateRangePicker(
-                state = dateRangePickerState,
-                modifier = Modifier.fillMaxWidth().height(400.dp)
-            )
-        },
         confirmButton = {
-            androidx.compose.material3.Button(
-                onClick = { onExport(dateRangePickerState.selectedStartDateMillis, dateRangePickerState.selectedEndDateMillis) },
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = NeonCyan)
+            TextButton(
+                onClick = { onExport(dateRangePickerState.selectedStartDateMillis, dateRangePickerState.selectedEndDateMillis) }
             ) {
-                androidx.compose.material3.Text("Export", color = Color.Black)
+                Text("Export", color = NeonCyan, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
-            androidx.compose.material3.TextButton(onClick = onDismiss) { androidx.compose.material3.Text("Cancel", color = Color.White) }
+            TextButton(onClick = onDismiss) { Text("Cancel", color = Color.White) }
         },
-        containerColor = SurfaceNavy,
-        titleContentColor = Color.White,
-        textContentColor = Color.White
-    )
+        colors = DatePickerDefaults.colors(containerColor = SurfaceNavy)
+    ) {
+        DateRangePicker(
+            state = dateRangePickerState,
+            title = {
+                Text(
+                    text = "Select Date Range",
+                    modifier = Modifier.padding(16.dp),
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            headline = {
+                DateRangePickerDefaults.DateRangePickerHeadline(
+                    state = dateRangePickerState,
+                    dateFormatter = DatePickerDefaults.dateFormatter(),
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            },
+            colors = DatePickerDefaults.colors(
+                containerColor = SurfaceNavy,
+                titleContentColor = Color.White,
+                headlineContentColor = NeonCyan,
+                weekdayContentColor = TextGray,
+                subheadContentColor = TextGray,
+                yearContentColor = Color.White,
+                currentYearContentColor = NeonCyan,
+                selectedYearContentColor = Color.Black,
+                selectedYearContainerColor = NeonCyan,
+                dayContentColor = Color.White,
+                disabledDayContentColor = TextGray,
+                selectedDayContentColor = Color.Black,
+                selectedDayContainerColor = NeonCyan,
+                todayContentColor = NeonCyan,
+                todayDateBorderColor = NeonCyan,
+                dayInSelectionRangeContentColor = Color.White,
+                dayInSelectionRangeContainerColor = NeonCyan.copy(alpha = 0.2f)
+            ),
+            modifier = Modifier.weight(1f)
+        )
+    }
 }
