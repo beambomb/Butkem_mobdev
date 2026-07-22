@@ -629,12 +629,11 @@ fun DashboardTab(viewModel: DashboardViewModel, session: UserSession?) {
         Text("ACTIVE SHOP HEATMAP", color = TextGray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(8.dp))
         
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             ShopHeatmapCard("Stamping", globalHeatmap["Shop 1 - Stamping & Press"] ?: AlertState.NORMAL)
             ShopHeatmapCard("Body", globalHeatmap["Shop 2 - Body & Welding"] ?: AlertState.NORMAL)
             ShopHeatmapCard("Paint", globalHeatmap["Shop 3 - Paint Shop"] ?: AlertState.NORMAL)
             ShopHeatmapCard("Assembly", globalHeatmap["Shop 4 - General Assembly"] ?: AlertState.NORMAL)
-            ShopHeatmapCard("Utils", AlertState.NORMAL)
         }
     }
 }
