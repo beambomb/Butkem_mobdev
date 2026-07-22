@@ -83,9 +83,10 @@ class DashboardViewModel : ViewModel() {
     private val _anomalyHistory = MutableStateFlow<List<AnomalyRecord>>(emptyList())
     val anomalyHistory: StateFlow<List<AnomalyRecord>> = _anomalyHistory.asStateFlow()
 
+    private var isRealtimeStarted = false
+
     init {
-        fetchInitialData()
-        startRealtimeListener()
+        // Realtime and data fetching will be triggered after a successful login
     }
 
     fun login(emailInput: String, passwordInput: String, plant: String) {
@@ -104,6 +105,10 @@ class DashboardViewModel : ViewModel() {
                 _currentUserSession.value = session
                 _loginState.value = LoginState.Success(session)
                 fetchInitialData()
+                if (!isRealtimeStarted) {
+                    startRealtimeListener()
+                    isRealtimeStarted = true
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
                 val cleanError = e.message?.substringBefore("URL:")?.trim() ?: "Login failed"
@@ -144,6 +149,8 @@ class DashboardViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 supabase.auth.signOut()
+                supabase.realtime.disconnect()
+                isRealtimeStarted = false
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
