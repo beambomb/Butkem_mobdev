@@ -61,6 +61,7 @@ dependencies {
     implementation("io.github.jan-tennert.supabase:postgrest-kt:2.4.3")
     implementation("io.github.jan-tennert.supabase:realtime-kt:2.4.3")
     implementation("io.github.jan-tennert.supabase:gotrue-kt:2.4.3")
+    implementation("io.github.jan-tennert.supabase:storage-kt:2.4.3")
     implementation("io.ktor:ktor-client-android:2.3.11")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
 
@@ -70,6 +71,9 @@ dependencies {
     // Vico (Library Chart Animasi Keren untuk Compose)
     implementation("com.patrykandpatrick.vico:compose:1.14.0")
     implementation("com.patrykandpatrick.vico:compose-m3:1.14.0")
+    
+    // Coil (Image Loading)
+    implementation("io.coil-kt:coil-compose:2.6.0")
 }
 
 dependencies {

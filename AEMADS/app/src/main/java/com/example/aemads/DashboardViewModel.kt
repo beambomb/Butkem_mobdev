@@ -15,6 +15,11 @@ import io.github.jan.supabase.realtime.channel
 import io.github.jan.supabase.realtime.postgresChangeFlow
 import io.github.jan.supabase.realtime.realtime
 import io.github.jan.supabase.realtime.decodeRecord
+import io.github.jan.supabase.storage.Storage
+import io.github.jan.supabase.storage.storage
+import kotlinx.serialization.Serializable
+import android.graphics.Bitmap
+import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,6 +46,7 @@ class DashboardViewModel : ViewModel() {
         install(Postgrest)
         install(Realtime)
         install(Auth)
+        install(Storage)
     }
 
     private val json = Json { 
@@ -58,6 +64,12 @@ class DashboardViewModel : ViewModel() {
 
     private val _currentUserSession = MutableStateFlow<UserSession?>(null)
     val currentUserSession = _currentUserSession.asStateFlow()
+
+    private val _globalHeatmapState = MutableStateFlow<Map<String, AlertState>>(emptyMap())
+    val globalHeatmapState = _globalHeatmapState.asStateFlow()
+
+    private val _uploadingReport = MutableStateFlow(false)
+    val uploadingReport = _uploadingReport.asStateFlow()
 
     private val _dataList = MutableStateFlow<List<EnergyLog>>(emptyList())
     val dataList: StateFlow<List<EnergyLog>> = _dataList.asStateFlow()
@@ -127,6 +139,29 @@ class DashboardViewModel : ViewModel() {
         _signUpState.value = SignUpState.Idle
     }
 
+    fun logout() {
+        viewModelScope.launch {
+            try {
+                supabase.auth.signOut()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _currentUserSession.value = null
+                _loginState.value = LoginState.Idle
+                _dataList.value = emptyList()
+            }
+        }
+    }
+
+    fun changeShop(newPlant: String) {
+        val currentSession = _currentUserSession.value
+        if (currentSession != null) {
+            _currentUserSession.value = currentSession.copy(plant = newPlant)
+            _dataList.value = emptyList() // Clear local chart
+            fetchInitialData() // Fetch historical data for new shop
+        }
+    }
+
     private fun fetchInitialData() {
         val currentPlant = _currentUserSession.value?.plant ?: "Shop 1 - Stamping & Press"
         viewModelScope.launch {
@@ -151,7 +186,6 @@ class DashboardViewModel : ViewModel() {
     private fun startRealtimeListener() {
         viewModelScope.launch {
             try {
-                val currentPlant = _currentUserSession.value?.plant ?: "Shop 1 - Stamping & Press"
                 val channel = supabase.channel("public:energy_logs")
                 
                 val changes = channel.postgresChangeFlow<PostgresAction.Insert>(schema = "public") {
@@ -161,6 +195,21 @@ class DashboardViewModel : ViewModel() {
                 launch {
                     changes.collect { action ->
                         val newLog = action.decodeRecord<EnergyLog>()
+                        
+                        // 1. Calculate Alert State for the incoming log (for Global Heatmap)
+                        val calculatedState = when {
+                            newLog.power_kw > 150.0 -> AlertState.SPIKE
+                            newLog.power_factor < 0.85 && newLog.thd_value > 10.0 -> AlertState.DRIFT
+                            else -> AlertState.NORMAL
+                        }
+                        
+                        // Update Global Heatmap
+                        val newMap = _globalHeatmapState.value.toMutableMap()
+                        newMap[newLog.lini_name] = calculatedState
+                        _globalHeatmapState.value = newMap
+
+                        // 2. Local Chart Filtering
+                        val currentPlant = _currentUserSession.value?.plant ?: "Shop 1 - Stamping & Press"
                         if (newLog.lini_name == currentPlant) {
                             val currentList = _dataList.value.toMutableList()
                             currentList.add(newLog)
@@ -226,10 +275,66 @@ class DashboardViewModel : ViewModel() {
         return csvBuilder.toString()
     }
 
-    fun addReport(report: DamageReport) {
-        val currentList = _reportList.value.toMutableList()
-        currentList.add(0, report)
-        _reportList.value = currentList
+    fun uploadReport(bitmap: Bitmap, shopName: String, relatedAnomaly: String, notes: String) {
+        viewModelScope.launch {
+            _uploadingReport.value = true
+            try {
+                // Compress Bitmap
+                val baos = ByteArrayOutputStream()
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 70, baos)
+                val data = baos.toByteArray()
+
+                // Upload to Supabase Storage
+                val fileName = "report_${System.currentTimeMillis()}.jpg"
+                val bucket = supabase.storage["reports"]
+                bucket.upload(fileName, data, upsert = false)
+                
+                // Get Public URL
+                val publicUrl = bucket.publicUrl(fileName)
+
+                // Insert to Database
+                val newReport = DamageReportDB(
+                    shop_name = shopName,
+                    related_anomaly = relatedAnomaly,
+                    notes = notes,
+                    image_url = publicUrl
+                )
+                
+                supabase.postgrest["damage_reports"].insert(newReport)
+                
+                // Fetch updated reports
+                fetchReports()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _uploadingReport.value = false
+            }
+        }
+    }
+
+    fun fetchReports() {
+        viewModelScope.launch {
+            try {
+                val reports = supabase.postgrest["damage_reports"]
+                    .select {
+                        order("created_at", Order.DESCENDING)
+                        limit(50)
+                    }.decodeList<DamageReportDB>()
+                
+                _reportList.value = reports.map { dbReport ->
+                    DamageReport(
+                        id = UUID.randomUUID().toString(),
+                        timestamp = dbReport.created_at ?: "",
+                        shopName = dbReport.shop_name,
+                        relatedAnomaly = dbReport.related_anomaly,
+                        notes = dbReport.notes,
+                        imageUrl = dbReport.image_url
+                    )
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 }
 
@@ -263,9 +368,21 @@ data class AnomalyRecord(
     val liniName: String
 )
 
-data class DamageReport(
-    val id: String = UUID.randomUUID().toString(),
-    val timestamp: String = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date()),
+@Serializable
+data class DamageReportDB(
+    val id: Int? = null,
+    val created_at: String? = null,
+    val shop_name: String,
+    val related_anomaly: String,
     val notes: String,
-    val imageBitmap: android.graphics.Bitmap? = null
+    val image_url: String
+)
+
+data class DamageReport(
+    val id: String,
+    val timestamp: String,
+    val shopName: String,
+    val relatedAnomaly: String,
+    val notes: String,
+    val imageUrl: String
 )

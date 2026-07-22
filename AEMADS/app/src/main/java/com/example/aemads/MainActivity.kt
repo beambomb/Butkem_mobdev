@@ -12,6 +12,15 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.launch
+import android.os.Environment
+import android.graphics.pdf.PdfDocument
+import android.graphics.Paint
+import android.graphics.Canvas
+import android.widget.Toast
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -49,6 +58,7 @@ import com.patrykandpatrick.vico.compose.chart.line.lineSpec
 import com.patrykandpatrick.vico.compose.component.shape.shader.verticalGradient
 import com.patrykandpatrick.vico.core.entry.ChartEntryModelProducer
 import com.patrykandpatrick.vico.core.entry.FloatEntry
+import coil.compose.AsyncImage
 
 // --- THEME COLORS ---
 val DarkNavy = Color(0xFF0B0F19)
@@ -140,7 +150,7 @@ fun LoginScreen(navController: NavHostController, viewModel: DashboardViewModel)
         
         OutlinedTextField(
             value = email, onValueChange = { email = it },
-            label = { Text("Enterprise ID / Email") },
+            label = { Text("Email") },
             colors = OutlinedTextFieldDefaults.colors(
                 focusedTextColor = Color.White, 
                 unfocusedTextColor = Color.White,
@@ -306,11 +316,21 @@ fun SignUpScreen(navController: NavHostController, viewModel: DashboardViewModel
 fun MainScreen(context: MainActivity, viewModel: DashboardViewModel) {
     var selectedTab by remember { mutableStateOf(0) }
     val session by viewModel.currentUserSession.collectAsState()
+    val uploadingReport by viewModel.uploadingReport.collectAsState()
     
     // Camera Logic
     var showReportDialog by remember { mutableStateOf(false) }
     var capturedImage by remember { mutableStateOf<Bitmap?>(null) }
     var reportNotes by remember { mutableStateOf("") }
+    var reportShop by remember { mutableStateOf("") }
+    var reportAnomaly by remember { mutableStateOf("") }
+    
+    // Set default shop when session is available
+    LaunchedEffect(session) {
+        if (session != null && reportShop.isEmpty()) {
+            reportShop = session?.plant ?: "Shop 1 - Stamping & Press"
+        }
+    }
     
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
         if (bitmap != null) {
@@ -324,11 +344,26 @@ fun MainScreen(context: MainActivity, viewModel: DashboardViewModel) {
             onDismissRequest = { showReportDialog = false },
             title = { Text("Submit Damage Report") },
             text = {
-                Column {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     capturedImage?.let { 
                         Image(bitmap = it.asImageBitmap(), contentDescription = "Captured", modifier = Modifier.height(150.dp).fillMaxWidth(), contentScale = ContentScale.Crop)
                     }
                     Spacer(Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = reportShop, 
+                        onValueChange = { reportShop = it },
+                        label = { Text("Shop Context") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = reportAnomaly, 
+                        onValueChange = { reportAnomaly = it },
+                        label = { Text("Related Anomaly (Optional)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("e.g. Spike Case 2") }
+                    )
+                    Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
                         value = reportNotes, 
                         onValueChange = { reportNotes = it },
@@ -339,11 +374,18 @@ fun MainScreen(context: MainActivity, viewModel: DashboardViewModel) {
             },
             confirmButton = {
                 Button(onClick = {
-                    viewModel.addReport(DamageReport(notes = reportNotes, imageBitmap = capturedImage))
+                    viewModel.uploadReport(capturedImage!!, reportShop, reportAnomaly, reportNotes)
                     showReportDialog = false
                     reportNotes = ""
+                    reportAnomaly = ""
                     selectedTab = 3 // Go to history tab
-                }) { Text("Submit to Database") }
+                }, enabled = !uploadingReport) { 
+                    if (uploadingReport) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = DarkNavy)
+                    } else {
+                        Text("Upload to Supabase") 
+                    }
+                }
             },
             dismissButton = {
                 TextButton(onClick = { showReportDialog = false }) { Text("Cancel") }
@@ -383,7 +425,7 @@ fun MainScreen(context: MainActivity, viewModel: DashboardViewModel) {
                 0 -> DashboardTab(viewModel, session)
                 1 -> AnomalyHistoryTab(viewModel)
                 3 -> ReportsTab(viewModel)
-                4 -> ProfileTab(session)
+                4 -> ProfileTab(session, viewModel, onLogout = { selectedTab = 0 })
             }
         }
     }
@@ -393,6 +435,7 @@ fun MainScreen(context: MainActivity, viewModel: DashboardViewModel) {
 fun DashboardTab(viewModel: DashboardViewModel, session: UserSession?) {
     val dataList by viewModel.dataList.collectAsState()
     val alertState by viewModel.alertState.collectAsState()
+    val globalHeatmap by viewModel.globalHeatmapState.collectAsState()
     
     val chartEntryModelProducer = remember { ChartEntryModelProducer() }
     LaunchedEffect(dataList) {
@@ -410,6 +453,37 @@ fun DashboardTab(viewModel: DashboardViewModel, session: UserSession?) {
             Column(modifier = Modifier.weight(1f)) {
                 Text("Technician Portal", color = Color.White, fontWeight = FontWeight.Bold)
                 Text(session?.plant ?: "Global Overview", color = TextGray, fontSize = 12.sp)
+            }
+            
+            // EXPORT BUTTON
+            var showExportMenu by remember { mutableStateOf(false) }
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val currentShop = session?.plant ?: "Global_Overview"
+
+            Box {
+                IconButton(onClick = { showExportMenu = true }) {
+                    Icon(Icons.Default.Share, "Export", tint = NeonCyan)
+                }
+                DropdownMenu(
+                    expanded = showExportMenu,
+                    onDismissRequest = { showExportMenu = false },
+                    modifier = Modifier.background(SurfaceNavy)
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Export to CSV", color = Color.White) },
+                        onClick = {
+                            showExportMenu = false
+                            exportToCsv(context, dataList, currentShop)
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Export to PDF", color = Color.White) },
+                        onClick = {
+                            showExportMenu = false
+                            exportToPdf(context, dataList, currentShop)
+                        }
+                    )
+                }
             }
         }
         
@@ -461,11 +535,11 @@ fun DashboardTab(viewModel: DashboardViewModel, session: UserSession?) {
         Spacer(modifier = Modifier.height(8.dp))
         
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            ShopHeatmapCard("Stamping", Color(0xFF4CAF50))
-            ShopHeatmapCard("Body", Color(0xFF4CAF50))
-            ShopHeatmapCard("Paint", if (alertState == AlertState.SPIKE) CriticalRed else Color(0xFF4CAF50))
-            ShopHeatmapCard("Assembly", Color(0xFF4CAF50))
-            ShopHeatmapCard("Utils", if (alertState == AlertState.DRIFT) NeonAmber else Color(0xFF4CAF50))
+            ShopHeatmapCard("Stamping", globalHeatmap["Shop 1 - Stamping & Press"] ?: AlertState.NORMAL)
+            ShopHeatmapCard("Body", globalHeatmap["Shop 2 - Body & Welding"] ?: AlertState.NORMAL)
+            ShopHeatmapCard("Paint", globalHeatmap["Shop 3 - Paint Shop"] ?: AlertState.NORMAL)
+            ShopHeatmapCard("Assembly", globalHeatmap["Shop 4 - General Assembly"] ?: AlertState.NORMAL)
+            ShopHeatmapCard("Utils", AlertState.NORMAL)
         }
     }
 }
@@ -482,10 +556,27 @@ fun MetricCard(title: String, value: String, color: Color, modifier: Modifier = 
 }
 
 @Composable
-fun ShopHeatmapCard(name: String, color: Color) {
+fun ShopHeatmapCard(name: String, alertState: AlertState) {
+    val isAnomaly = alertState != AlertState.NORMAL
+    val infiniteTransition = rememberInfiniteTransition()
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = if (isAnomaly) 0.3f else 1f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(500),
+            repeatMode = RepeatMode.Reverse
+        ), label = "blink"
+    )
+
+    val color = when (alertState) {
+        AlertState.NORMAL -> Color(0xFF4CAF50)
+        AlertState.SPIKE -> CriticalRed
+        AlertState.DRIFT -> NeonAmber
+    }
+
     Card(colors = CardDefaults.cardColors(containerColor = SurfaceNavy), shape = RoundedCornerShape(8.dp), modifier = Modifier.size(64.dp)) {
         Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Box(modifier = Modifier.size(16.dp).background(color, CircleShape))
+            Box(modifier = Modifier.size(16.dp).background(color.copy(alpha = if (isAnomaly) alpha else 1f), CircleShape))
             Spacer(modifier = Modifier.height(4.dp))
             Text(name, color = Color.White, fontSize = 10.sp)
         }
@@ -498,7 +589,6 @@ fun AnomalyHistoryTab(viewModel: DashboardViewModel) {
     
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("Anomaly Events History", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-        Text("Track Case 2 (Spike) and Case 3 (Drift)", color = TextGray, fontSize = 12.sp)
         Spacer(modifier = Modifier.height(16.dp))
         
         if (anomalies.isEmpty()) {
@@ -536,7 +626,6 @@ fun ReportsTab(viewModel: DashboardViewModel) {
     
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("Damage Report History", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-        Text("Syncing to Supabase (Pending)", color = TextGray, fontSize = 12.sp)
         Spacer(modifier = Modifier.height(16.dp))
         
         if (reports.isEmpty()) {
@@ -549,9 +638,15 @@ fun ReportsTab(viewModel: DashboardViewModel) {
                     Card(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), colors = CardDefaults.cardColors(containerColor = SurfaceNavy)) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(report.timestamp, color = TextGray, fontSize = 12.sp)
+                            Text("${report.shopName} | ${if (report.relatedAnomaly.isEmpty()) "No Anomaly Linked" else report.relatedAnomaly}", color = NeonCyan, fontSize = 12.sp)
                             Spacer(Modifier.height(8.dp))
-                            report.imageBitmap?.let { 
-                                Image(bitmap = it.asImageBitmap(), contentDescription = null, modifier = Modifier.height(120.dp).fillMaxWidth(), contentScale = ContentScale.Crop)
+                            if (report.imageUrl.isNotEmpty()) {
+                                AsyncImage(
+                                    model = report.imageUrl,
+                                    contentDescription = null,
+                                    modifier = Modifier.height(180.dp).fillMaxWidth(),
+                                    contentScale = ContentScale.Crop
+                                )
                                 Spacer(Modifier.height(8.dp))
                             }
                             Text(report.notes, color = Color.White)
@@ -563,20 +658,147 @@ fun ReportsTab(viewModel: DashboardViewModel) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProfileTab(userSession: UserSession?) {
+fun ProfileTab(userSession: UserSession?, viewModel: DashboardViewModel, onLogout: () -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val shops = listOf("Shop 1 - Stamping & Press", "Shop 2 - Body & Welding", "Shop 3 - Paint Shop", "Shop 4 - General Assembly")
+    var selectedShopText by remember(userSession) { mutableStateOf(userSession?.plant ?: shops[0]) }
+
     Column(modifier = Modifier.fillMaxSize().padding(16.dp).imePadding(), horizontalAlignment = Alignment.CenterHorizontally) {
         Icon(Icons.Default.AccountCircle, "Profile", tint = Color.White, modifier = Modifier.size(100.dp))
         Spacer(Modifier.height(16.dp))
         Text(userSession?.name ?: "Technician", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 24.sp)
         Text("Maintenance Technician", color = NeonCyan)
         Spacer(Modifier.height(32.dp))
+        
         Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = SurfaceNavy)) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("Email: ${userSession?.email ?: "N/A"}", color = Color.White)
-                Divider(modifier = Modifier.padding(vertical = 8.dp), color = DarkNavy)
-                Text("Current Context: ${userSession?.plant ?: "N/A"}", color = Color.White)
+                Divider(modifier = Modifier.padding(vertical = 12.dp), color = DarkNavy)
+                
+                Text("Current Active Plant:", color = TextGray, fontSize = 12.sp)
+                Spacer(Modifier.height(8.dp))
+                
+                ExposedDropdownMenuBox(
+                    expanded = expanded,
+                    onExpandedChange = { expanded = !expanded }
+                ) {
+                    OutlinedTextField(
+                        value = selectedShopText,
+                        onValueChange = {},
+                        readOnly = true,
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                        modifier = Modifier.fillMaxWidth().menuAnchor(),
+                        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                        )
+                    )
+                    ExposedDropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = { expanded = false }
+                    ) {
+                        shops.forEach { selectionOption ->
+                            DropdownMenuItem(
+                                text = { Text(selectionOption) },
+                                onClick = {
+                                    selectedShopText = selectionOption
+                                    expanded = false
+                                    viewModel.changeShop(selectionOption)
+                                }
+                            )
+                        }
+                    }
+                }
             }
         }
+        
+        Spacer(Modifier.height(32.dp))
+        
+        Button(
+            onClick = {
+                viewModel.logout()
+                onLogout()
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = CriticalRed),
+            modifier = Modifier.fillMaxWidth().height(50.dp),
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            Text("Logout", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        }
+    }
+}
+
+// --- EXPORT FUNCTIONS ---
+fun exportToCsv(context: Context, dataList: List<EnergyLog>, shopName: String) {
+    try {
+        val fileName = "AEMADS_Report_${shopName.replace(" ", "_")}_${System.currentTimeMillis()}.csv"
+        val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        val file = File(downloadsDir, fileName)
+        
+        val writer = FileOutputStream(file).bufferedWriter()
+        writer.write("Timestamp,Shop Name,Power kW,Cos Phi,THD,OEE Score\n")
+        dataList.forEach { log ->
+            writer.write("${log.created_at},${log.lini_name},${log.power_kw},${log.power_factor},${log.thd_value},${log.oee_score}\n")
+        }
+        writer.close()
+        
+        Toast.makeText(context, "CSV Saved to Downloads: $fileName", Toast.LENGTH_LONG).show()
+    } catch (e: Exception) {
+        e.printStackTrace()
+        Toast.makeText(context, "Failed to export CSV", Toast.LENGTH_SHORT).show()
+    }
+}
+
+fun exportToPdf(context: Context, dataList: List<EnergyLog>, shopName: String) {
+    try {
+        val pdfDocument = PdfDocument()
+        val pageInfo = PdfDocument.PageInfo.Builder(600, 900, 1).create()
+        val page = pdfDocument.startPage(pageInfo)
+        val canvas = page.canvas
+        val paint = Paint().apply {
+            color = android.graphics.Color.BLACK
+            textSize = 14f
+        }
+        val titlePaint = Paint().apply {
+            color = android.graphics.Color.BLACK
+            textSize = 20f
+            isFakeBoldText = true
+        }
+        
+        canvas.drawText("AEMADS Energy Report", 40f, 50f, titlePaint)
+        canvas.drawText("Shop: $shopName", 40f, 80f, paint)
+        
+        var yPosition = 120f
+        canvas.drawText("Timestamp", 40f, yPosition, titlePaint)
+        canvas.drawText("Power kW", 220f, yPosition, titlePaint)
+        canvas.drawText("Cos Phi", 320f, yPosition, titlePaint)
+        canvas.drawText("OEE", 420f, yPosition, titlePaint)
+        
+        yPosition += 30f
+        
+        dataList.take(20).forEach { log ->
+            val shortTime = log.created_at.substringBefore(".").takeLast(8)
+            canvas.drawText(shortTime, 40f, yPosition, paint)
+            canvas.drawText(log.power_kw.toString(), 220f, yPosition, paint)
+            canvas.drawText(log.power_factor.toString(), 320f, yPosition, paint)
+            canvas.drawText(log.oee_score.toString(), 420f, yPosition, paint)
+            yPosition += 25f
+        }
+        
+        pdfDocument.finishPage(page)
+        
+        val fileName = "AEMADS_Report_${shopName.replace(" ", "_")}_${System.currentTimeMillis()}.pdf"
+        val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        val file = File(downloadsDir, fileName)
+        
+        pdfDocument.writeTo(FileOutputStream(file))
+        pdfDocument.close()
+        
+        Toast.makeText(context, "PDF Saved to Downloads: $fileName", Toast.LENGTH_LONG).show()
+    } catch (e: Exception) {
+        e.printStackTrace()
+        Toast.makeText(context, "Failed to export PDF", Toast.LENGTH_SHORT).show()
     }
 }
