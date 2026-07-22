@@ -4,7 +4,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class EnergyLog(
-    val id: Long = 0,
+    val id: String = "",
     val lini_name: String = "",
     val power_kw: Double = 0.0,
     val power_factor: Double = 0.0,
