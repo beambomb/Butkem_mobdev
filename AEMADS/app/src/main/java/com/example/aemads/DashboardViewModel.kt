@@ -396,7 +396,7 @@ data class AnomalyRecord(
 
 @Serializable
 data class DamageReportDB(
-    val id: Int? = null,
+    val id: String? = null,
     val created_at: String? = null,
     val shop_name: String,
     val related_anomaly: String,
