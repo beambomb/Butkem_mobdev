@@ -122,7 +122,13 @@ fun AemadsApp(context: MainActivity, viewModel: DashboardViewModel) {
     NavHost(navController = navController, startDestination = "login") {
         composable("login") { LoginScreen(navController, viewModel) }
         composable("signup") { SignUpScreen(navController, viewModel) }
-        composable("main") { MainScreen(context, viewModel) }
+        composable("main") { 
+            MainScreen(context, viewModel, onNavigateToLogin = {
+                navController.navigate("login") { 
+                    popUpTo(0) // clear backstack
+                }
+            }) 
+        }
     }
 }
 
@@ -324,7 +330,7 @@ fun SignUpScreen(navController: NavHostController, viewModel: DashboardViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen(context: MainActivity, viewModel: DashboardViewModel) {
+fun MainScreen(context: MainActivity, viewModel: DashboardViewModel, onNavigateToLogin: () -> Unit = {}) {
     var selectedTab by remember { mutableStateOf(0) }
     val session by viewModel.currentUserSession.collectAsState()
     val uploadingReport by viewModel.uploadingReport.collectAsState()
@@ -527,7 +533,7 @@ fun MainScreen(context: MainActivity, viewModel: DashboardViewModel) {
                 0 -> DashboardTab(viewModel, session)
                 1 -> AnomalyHistoryTab(viewModel)
                 3 -> ReportsTab(viewModel)
-                4 -> ProfileTab(session, viewModel, onLogout = { selectedTab = 0 })
+                4 -> ProfileTab(session, viewModel, onLogout = onNavigateToLogin)
             }
         }
     }
