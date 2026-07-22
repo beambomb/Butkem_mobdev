@@ -16,6 +16,8 @@ import android.os.Environment
 import android.graphics.pdf.PdfDocument
 import android.graphics.Paint
 import android.graphics.Canvas
+import android.graphics.ImageDecoder
+import android.provider.MediaStore
 import android.widget.Toast
 import java.io.File
 import java.io.FileOutputStream
@@ -339,6 +341,53 @@ fun MainScreen(context: MainActivity, viewModel: DashboardViewModel) {
         }
     }
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            try {
+                val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    ImageDecoder.decodeBitmap(ImageDecoder.createSource(context.contentResolver, uri))
+                } else {
+                    @Suppress("DEPRECATION")
+                    MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
+                }
+                // Convert hardware bitmap to software for compatibility
+                val softwareBitmap = bitmap.copy(android.graphics.Bitmap.Config.ARGB_8888, true)
+                capturedImage = softwareBitmap
+                showReportDialog = true
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Toast.makeText(context, "Failed to load image", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    var showMediaActionDialog by remember { mutableStateOf(false) }
+
+    if (showMediaActionDialog) {
+        AlertDialog(
+            onDismissRequest = { showMediaActionDialog = false },
+            title = { Text("Add Damage Photo") },
+            text = { Text("Choose a photo source for your damage report.") },
+            confirmButton = {
+                Button(onClick = {
+                    showMediaActionDialog = false
+                    cameraLauncher.launch()
+                }, colors = ButtonDefaults.buttonColors(containerColor = NeonCyan)) {
+                    Text("Camera", color = DarkNavy)
+                }
+            },
+            dismissButton = {
+                Button(onClick = {
+                    showMediaActionDialog = false
+                    galleryLauncher.launch("image/*")
+                }, colors = ButtonDefaults.buttonColors(containerColor = SurfaceNavy)) {
+                    Text("Gallery", color = Color.White)
+                }
+            }
+        )
+    }
+
     if (showReportDialog) {
         AlertDialog(
             onDismissRequest = { showReportDialog = false },
@@ -406,7 +455,7 @@ fun MainScreen(context: MainActivity, viewModel: DashboardViewModel) {
                     
                     // FAB is now inline with other buttons
                     FloatingActionButton(
-                        onClick = { cameraLauncher.launch() },
+                        onClick = { showMediaActionDialog = true },
                         containerColor = NeonAmber,
                         shape = CircleShape,
                         modifier = Modifier.size(56.dp)
