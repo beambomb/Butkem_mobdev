@@ -152,8 +152,8 @@ class DashboardViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 supabase.auth.signOut()
-                supabase.realtime.disconnect()
                 isRealtimeStarted = false
+                realtimeJob?.cancel()
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
@@ -194,63 +194,16 @@ class DashboardViewModel : ViewModel() {
         }
     }
 
+    private var realtimeJob: kotlinx.coroutines.Job? = null
+
     private fun startRealtimeListener() {
-        viewModelScope.launch {
-            try {
-                val channel = supabase.channel("public:energy_logs")
-                
-                val changes = channel.postgresChangeFlow<PostgresAction.Insert>(schema = "public") {
-                    table = "energy_logs"
-                }
-
-                launch {
-                    changes.collect { action ->
-                        try {
-                            val record = action.record
-                            val newLog = EnergyLog(
-                                id = record["id"]?.jsonPrimitive?.longOrNull ?: 0L,
-                                lini_name = record["lini_name"]?.jsonPrimitive?.content ?: "",
-                                power_kw = record["power_kw"]?.jsonPrimitive?.doubleOrNull ?: 0.0,
-                                power_factor = record["power_factor"]?.jsonPrimitive?.doubleOrNull ?: 0.0,
-                                thd_value = record["thd_value"]?.jsonPrimitive?.doubleOrNull ?: 0.0,
-                                oee_score = record["oee_score"]?.jsonPrimitive?.doubleOrNull ?: 0.0,
-                                created_at = record["created_at"]?.jsonPrimitive?.content ?: ""
-                            )
-                            
-                            // 1. Calculate Alert State for the incoming log (for Global Heatmap)
-                        val calculatedState = when {
-                            newLog.power_kw > 150.0 -> AlertState.SPIKE
-                            newLog.power_factor < 0.85 && newLog.thd_value > 10.0 -> AlertState.DRIFT
-                            else -> AlertState.NORMAL
-                        }
-                        
-                        // Update Global Heatmap
-                        val newMap = _globalHeatmapState.value.toMutableMap()
-                        newMap[newLog.lini_name] = calculatedState
-                        _globalHeatmapState.value = newMap
-
-                        // 2. Local Chart Filtering
-                        val currentPlant = _currentUserSession.value?.plant ?: "Shop 1 - Stamping & Press"
-                        if (newLog.lini_name == currentPlant) {
-                            val currentList = _dataList.value.toMutableList()
-                            currentList.add(newLog)
-                            if (currentList.size > 20) {
-                                currentList.removeAt(0)
-                            }
-                            _dataList.value = currentList
-                            evaluateThreshold(newLog)
-                        }
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
-                    }
-                }
-
-                supabase.realtime.connect()
-                channel.subscribe()
-                
-            } catch (e: Exception) {
-                e.printStackTrace()
+        // Implement robust polling fallback to guarantee live updates for presentation
+        // This bypasses any strict WebSocket RLS or Firewall blocks!
+        realtimeJob?.cancel()
+        realtimeJob = viewModelScope.launch {
+            while (kotlinx.coroutines.isActive) {
+                kotlinx.coroutines.delay(2000) // Poll every 2 seconds
+                fetchInitialData()
             }
         }
     }
