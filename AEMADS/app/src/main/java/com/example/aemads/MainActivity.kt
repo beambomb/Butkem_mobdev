@@ -4,6 +4,8 @@ import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import android.graphics.Bitmap
 import android.os.Build
 import android.os.Bundle
@@ -329,6 +331,30 @@ fun MainScreen(context: MainActivity, viewModel: DashboardViewModel) {
     var reportAnomaly by remember { mutableStateOf("") }
     var expandedShop by remember { mutableStateOf(false) }
     val shops = listOf("Shop 1 - Stamping & Press", "Shop 2 - Body & Welding", "Shop 3 - Paint Shop", "Shop 4 - General Assembly")
+    
+    val alertState by viewModel.alertState.collectAsState()
+    
+    LaunchedEffect(alertState) {
+        if (alertState != AlertState.NORMAL) {
+            val channelId = if(alertState == AlertState.SPIKE) "spike_alert" else "drift_alert"
+            val title = if(alertState == AlertState.SPIKE) "CRITICAL SPIKE DETECTED" else "SYSTEM DRIFT WARNING"
+            
+            val builder = NotificationCompat.Builder(context, channelId)
+                .setSmallIcon(android.R.drawable.ic_dialog_alert)
+                .setContentTitle(title)
+                .setContentText("Anomaly detected in current shop. Please check the dashboard.")
+                .setPriority(if(alertState == AlertState.SPIKE) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
+                .setAutoCancel(true)
+            
+            try {
+                with(NotificationManagerCompat.from(context)) {
+                    notify(System.currentTimeMillis().toInt(), builder.build())
+                }
+            } catch (e: SecurityException) {
+                // Handle permission not granted
+            }
+        }
+    }
     
     // Set default shop when session is available
     LaunchedEffect(session) {

@@ -2,6 +2,7 @@ import time
 import requests
 import random
 import datetime
+import math
 
 # ==========================================
 # KONFIGURASI SUPABASE
@@ -37,10 +38,15 @@ def main():
         payloads = []
         
         # ----------------------------------------------------
+        # SINE WAVE LOGIC FOR VISUAL "HILLS AND VALLEYS"
+        # ----------------------------------------------------
+        t = counter / 2.0
+        
+        # ----------------------------------------------------
         # SHOP 1: STAMPING & PRESS (Base: 50 kW)
         # Rentan terjadi Spike Anomaly (Case 2) akibat hentakan mesin press
         # ----------------------------------------------------
-        s1_power = round(random.uniform(45.0, 55.0), 2)
+        s1_power = round(50.0 + (math.sin(t) * 15.0) + random.uniform(-2.0, 2.0), 2)
         s1_pf = round(random.uniform(0.85, 0.90), 2)
         s1_oee = round(random.uniform(85.0, 95.0), 1)
         s1_thd = round(random.uniform(4.0, 6.0), 1)
@@ -61,7 +67,7 @@ def main():
         # SHOP 2: BODY & WELDING (Base: 100 kW)
         # Rentan terjadi Drift Anomaly (Case 3) dan tingginya THD akibat robot las
         # ----------------------------------------------------
-        s2_power = round(random.uniform(90.0, 110.0), 2)
+        s2_power = round(100.0 + (math.cos(t * 0.8) * 20.0) + random.uniform(-3.0, 3.0), 2)
         s2_pf = round(random.uniform(0.80, 0.85), 2)
         s2_oee = round(random.uniform(80.0, 90.0), 1)
         s2_thd = round(random.uniform(8.0, 12.0), 1)
@@ -84,9 +90,8 @@ def main():
 
         # ----------------------------------------------------
         # SHOP 3: PAINT SHOP (Base: 250 kW)
-        # Konsumsi paling besar, oven pemanas, jarang spike, sangat stabil
         # ----------------------------------------------------
-        s3_power = round(random.uniform(240.0, 260.0), 2)
+        s3_power = round(250.0 + (math.sin(t * 1.5) * 35.0) + random.uniform(-5.0, 5.0), 2)
         s3_pf = round(random.uniform(0.92, 0.98), 2)
         s3_oee = round(random.uniform(92.0, 98.0), 1)
         s3_thd = round(random.uniform(1.5, 3.0), 1)
@@ -99,9 +104,8 @@ def main():
 
         # ----------------------------------------------------
         # SHOP 4: GENERAL ASSEMBLY (Base: 50 kW)
-        # Konsumsi rendah, motor listrik dan alat ringan, paling stabil
         # ----------------------------------------------------
-        s4_power = round(random.uniform(45.0, 55.0), 2)
+        s4_power = round(50.0 + (math.cos(t * 1.2) * 10.0) + random.uniform(-2.0, 2.0), 2)
         s4_pf = round(random.uniform(0.90, 0.95), 2)
         s4_oee = round(random.uniform(90.0, 96.0), 1)
         s4_thd = round(random.uniform(2.0, 4.0), 1)

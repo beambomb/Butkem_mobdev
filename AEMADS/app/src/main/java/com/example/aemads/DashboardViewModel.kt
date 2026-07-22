@@ -179,6 +179,29 @@ class DashboardViewModel : ViewModel() {
         val currentPlant = _currentUserSession.value?.plant ?: "Shop 1 - Stamping & Press"
         viewModelScope.launch {
             try {
+                // Fetch latest data for ALL shops to update global heatmap
+                val globalData = supabase.postgrest["energy_logs"]
+                    .select {
+                        order("id", Order.DESCENDING)
+                        limit(10)
+                    }.decodeList<EnergyLog>()
+                
+                val newMap = _globalHeatmapState.value.toMutableMap()
+                globalData.forEach { log ->
+                    val calculatedState = when {
+                        log.power_kw > 150.0 -> AlertState.SPIKE
+                        log.power_factor < 0.85 && log.thd_value > 10.0 -> AlertState.DRIFT
+                        else -> AlertState.NORMAL
+                    }
+                    if (newMap[log.lini_name] != AlertState.SPIKE && newMap[log.lini_name] != AlertState.DRIFT) {
+                        newMap[log.lini_name] = calculatedState
+                    }
+                    if (calculatedState != AlertState.NORMAL) {
+                        newMap[log.lini_name] = calculatedState
+                    }
+                }
+                _globalHeatmapState.value = newMap
+
                 val initialData = supabase.postgrest["energy_logs"]
                     .select {
                         filter {
