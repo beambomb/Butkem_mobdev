@@ -68,17 +68,17 @@ def main():
         # Rentan terjadi Drift Anomaly (Case 3) dan tingginya THD akibat robot las
         # ----------------------------------------------------
         s2_power = round(100.0 + (math.cos(t * 0.8) * 20.0) + random.uniform(-3.0, 3.0), 2)
-        s2_pf = round(random.uniform(0.80, 0.85), 2)
-        s2_oee = round(random.uniform(80.0, 90.0), 1)
-        s2_thd = round(random.uniform(8.0, 12.0), 1)
+        s2_pf = round(random.uniform(0.88, 0.92), 2)  # NORMAL PF
+        s2_oee = round(random.uniform(85.0, 95.0), 1)
+        s2_thd = round(random.uniform(4.0, 7.0), 1)   # NORMAL THD
         
         if counter > 0 and ((counter + 6) % 16 == 0 or 0 < body_drift_count < 3):
             if (counter + 6) % 16 == 0: body_drift_count = 1
             print(f"[WARNING] [BODY WELDING] DRIFT ANOMALY (Siklus {body_drift_count}/3)")
             s2_power += (20.0 * body_drift_count)
-            s2_pf -= (0.05 * body_drift_count)
+            s2_pf = round(random.uniform(0.70, 0.82), 2)  # ANOMALY PF < 0.85
             s2_oee -= (5.0 * body_drift_count)
-            s2_thd = round(random.uniform(18.0, 25.0), 1)
+            s2_thd = round(random.uniform(15.0, 25.0), 1) # ANOMALY THD > 10.0
             body_drift_count += 1
             if body_drift_count >= 3: body_drift_count = 0
             
