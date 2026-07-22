@@ -187,17 +187,16 @@ class DashboardViewModel : ViewModel() {
                     }.decodeList<EnergyLog>()
                 
                 val newMap = _globalHeatmapState.value.toMutableMap()
+                val processedShops = mutableSetOf<String>()
                 globalData.forEach { log ->
-                    val calculatedState = when {
-                        log.power_kw > 150.0 -> AlertState.SPIKE
-                        log.power_factor < 0.85 || log.thd_value > 10.0 -> AlertState.DRIFT
-                        else -> AlertState.NORMAL
-                    }
-                    if (newMap[log.lini_name] != AlertState.SPIKE && newMap[log.lini_name] != AlertState.DRIFT) {
+                    if (!processedShops.contains(log.lini_name)) {
+                        val calculatedState = when {
+                            log.power_kw > 150.0 && log.lini_name.contains("Shop 1") -> AlertState.SPIKE
+                            log.power_factor < 0.85 || log.thd_value > 10.0 -> AlertState.DRIFT
+                            else -> AlertState.NORMAL
+                        }
                         newMap[log.lini_name] = calculatedState
-                    }
-                    if (calculatedState != AlertState.NORMAL) {
-                        newMap[log.lini_name] = calculatedState
+                        processedShops.add(log.lini_name)
                     }
                 }
                 _globalHeatmapState.value = newMap
@@ -238,7 +237,7 @@ class DashboardViewModel : ViewModel() {
     private fun evaluateThreshold(data: EnergyLog) {
         val currentState = _alertState.value
         val newState = when {
-            data.power_kw > 150.0 -> AlertState.SPIKE
+            data.power_kw > 150.0 && data.lini_name.contains("Shop 1") -> AlertState.SPIKE
             data.power_factor < 0.85 || data.thd_value > 10.0 -> AlertState.DRIFT
             else -> AlertState.NORMAL
         }
