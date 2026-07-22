@@ -190,7 +190,7 @@ class DashboardViewModel : ViewModel() {
                 globalData.forEach { log ->
                     val calculatedState = when {
                         log.power_kw > 150.0 -> AlertState.SPIKE
-                        log.power_factor < 0.85 && log.thd_value > 10.0 -> AlertState.DRIFT
+                        log.power_factor < 0.85 || log.thd_value > 10.0 -> AlertState.DRIFT
                         else -> AlertState.NORMAL
                     }
                     if (newMap[log.lini_name] != AlertState.SPIKE && newMap[log.lini_name] != AlertState.DRIFT) {
@@ -239,7 +239,7 @@ class DashboardViewModel : ViewModel() {
         val currentState = _alertState.value
         val newState = when {
             data.power_kw > 150.0 -> AlertState.SPIKE
-            data.power_factor < 0.85 && data.thd_value > 10.0 -> AlertState.DRIFT
+            data.power_factor < 0.85 || data.thd_value > 10.0 -> AlertState.DRIFT
             else -> AlertState.NORMAL
         }
         
