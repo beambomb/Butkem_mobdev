@@ -603,6 +603,15 @@ fun DashboardTab(viewModel: DashboardViewModel, session: UserSession?) {
         // REALTIME CHART (Moved here from Analytics Tab)
         Text("REALTIME POWER TREND (kW)", color = TextGray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(8.dp))
+        val bottomAxisValueFormatter = com.patrykandpatrick.vico.core.axis.formatter.AxisValueFormatter<com.patrykandpatrick.vico.core.axis.AxisPosition.Horizontal.Bottom> { value, _ ->
+            val index = value.toInt()
+            if (index >= 0 && index < dataList.size) {
+                formatUtcToLocal(dataList[index].created_at).takeLast(8)
+            } else {
+                ""
+            }
+        }
+
         Card(modifier = Modifier.fillMaxWidth().height(220.dp), colors = CardDefaults.cardColors(containerColor = SurfaceNavy)) {
             Box(modifier = Modifier.padding(16.dp)) {
                 if (dataList.isNotEmpty()) {
@@ -617,7 +626,7 @@ fun DashboardTab(viewModel: DashboardViewModel, session: UserSession?) {
                         ),
                         chartModelProducer = chartEntryModelProducer, 
                         startAxis = rememberStartAxis(), 
-                        bottomAxis = rememberBottomAxis()
+                        bottomAxis = rememberBottomAxis(valueFormatter = bottomAxisValueFormatter)
                     )
                 } else {
                     Text("NO DATA", color = CriticalRed, modifier = Modifier.align(Alignment.Center))
