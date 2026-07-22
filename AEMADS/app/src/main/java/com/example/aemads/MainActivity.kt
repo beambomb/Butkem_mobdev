@@ -991,13 +991,6 @@ fun ExportDateRangeDialog(onDismiss: () -> Unit, onExport: (Long?, Long?) -> Uni
                     fontWeight = FontWeight.Bold
                 )
             },
-            headline = {
-                DateRangePickerDefaults.DateRangePickerHeadline(
-                    state = dateRangePickerState,
-                    dateFormatter = DatePickerDefaults.dateFormatter(),
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
-            },
             colors = DatePickerDefaults.colors(
                 containerColor = SurfaceNavy,
                 titleContentColor = Color.White,
