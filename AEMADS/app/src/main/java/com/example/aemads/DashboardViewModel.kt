@@ -195,11 +195,19 @@ class DashboardViewModel : ViewModel() {
                             log.power_factor < 0.85 || log.thd_value > 10.0 -> AlertState.DRIFT
                             else -> AlertState.NORMAL
                         }
+                        
+                        // Check if state transitioned to an anomaly
+                        val oldState = newMap[log.lini_name] ?: AlertState.NORMAL
+                        if (calculatedState != AlertState.NORMAL && oldState != calculatedState) {
+                            logAnomaly(calculatedState, log)
+                        }
+
                         newMap[log.lini_name] = calculatedState
                         processedShops.add(log.lini_name)
                     }
                 }
                 _globalHeatmapState.value = newMap
+                _alertState.value = newMap[currentPlant] ?: AlertState.NORMAL
 
                 fetchReports() // Fetch reports along with global heatmap update
 
@@ -213,7 +221,6 @@ class DashboardViewModel : ViewModel() {
                     }.decodeList<EnergyLog>()
                 
                 _dataList.value = initialData.reversed()
-                _dataList.value.lastOrNull()?.let { evaluateThreshold(it) }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -236,21 +243,7 @@ class DashboardViewModel : ViewModel() {
         }
     }
 
-    private fun evaluateThreshold(data: EnergyLog) {
-        val currentState = _alertState.value
-        val newState = when {
-            data.power_kw > 150.0 && data.lini_name.contains("Shop 1") -> AlertState.SPIKE
-            data.power_factor < 0.85 || data.thd_value > 10.0 -> AlertState.DRIFT
-            else -> AlertState.NORMAL
-        }
-        
-        _alertState.value = newState
 
-        // Log anomaly if state transitioned to an anomaly
-        if (newState != AlertState.NORMAL && currentState != newState) {
-            logAnomaly(newState, data)
-        }
-    }
 
     private fun logAnomaly(type: AlertState, data: EnergyLog) {
         val newRecord = AnomalyRecord(
@@ -298,7 +291,7 @@ class DashboardViewModel : ViewModel() {
                 val publicUrl = bucket.publicUrl(fileName)
 
                 // Insert to Database
-                val newReport = DamageReportDB(
+                val newReport = DamageReportInsert(
                     shop_name = shopName,
                     related_anomaly = relatedAnomaly,
                     notes = notes,
@@ -396,8 +389,16 @@ data class AnomalyRecord(
 
 @Serializable
 data class DamageReportDB(
-    val id: String? = null,
+    val id: Int? = null,
     val created_at: String? = null,
+    val shop_name: String,
+    val related_anomaly: String,
+    val notes: String,
+    val image_url: String
+)
+
+@Serializable
+data class DamageReportInsert(
     val shop_name: String,
     val related_anomaly: String,
     val notes: String,
