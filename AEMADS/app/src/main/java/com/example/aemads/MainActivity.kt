@@ -338,11 +338,12 @@ fun MainScreen(context: MainActivity, viewModel: DashboardViewModel) {
         if (alertState != AlertState.NORMAL) {
             val channelId = if(alertState == AlertState.SPIKE) "spike_alert" else "drift_alert"
             val title = if(alertState == AlertState.SPIKE) "CRITICAL SPIKE DETECTED" else "SYSTEM DRIFT WARNING"
+            val body = if(alertState == AlertState.SPIKE) "Power usage exceeded 150kW!" else "Power Factor < 0.85 & THD > 10% detected!"
             
             val builder = NotificationCompat.Builder(context, channelId)
                 .setSmallIcon(android.R.drawable.ic_dialog_alert)
                 .setContentTitle(title)
-                .setContentText("Anomaly detected in current shop. Please check the dashboard.")
+                .setContentText(body)
                 .setPriority(if(alertState == AlertState.SPIKE) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
                 .setAutoCancel(true)
             

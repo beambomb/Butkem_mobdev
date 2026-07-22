@@ -72,8 +72,8 @@ def main():
         s2_oee = round(random.uniform(80.0, 90.0), 1)
         s2_thd = round(random.uniform(8.0, 12.0), 1)
         
-        if counter > 0 and (counter % 13 == 0 or 0 < body_drift_count < 3):
-            if counter % 13 == 0: body_drift_count = 1
+        if counter > 0 and ((counter + 6) % 16 == 0 or 0 < body_drift_count < 3):
+            if (counter + 6) % 16 == 0: body_drift_count = 1
             print(f"[WARNING] [BODY WELDING] DRIFT ANOMALY (Siklus {body_drift_count}/3)")
             s2_power += (20.0 * body_drift_count)
             s2_pf -= (0.05 * body_drift_count)
