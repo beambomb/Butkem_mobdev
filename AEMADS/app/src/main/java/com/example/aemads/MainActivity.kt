@@ -4,14 +4,9 @@ import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
-import android.content.Intent
 import android.graphics.Bitmap
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -40,20 +35,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.app.NotificationCompat
-import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.core.view.WindowCompat
 import com.patrykandpatrick.vico.compose.axis.horizontal.rememberBottomAxis
 import com.patrykandpatrick.vico.compose.axis.vertical.rememberStartAxis
 import com.patrykandpatrick.vico.compose.chart.Chart
 import com.patrykandpatrick.vico.compose.chart.line.lineChart
+import com.patrykandpatrick.vico.compose.chart.line.lineSpec
+import com.patrykandpatrick.vico.compose.component.shape.shader.verticalGradient
 import com.patrykandpatrick.vico.core.entry.ChartEntryModelProducer
 import com.patrykandpatrick.vico.core.entry.FloatEntry
-import java.io.File
 
 // --- THEME COLORS ---
 val DarkNavy = Color(0xFF0B0F19)
@@ -66,6 +61,7 @@ val TextGray = Color(0xFF8A95A5)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerForActivityResult(ActivityResultContracts.RequestPermission()) {}.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
@@ -81,7 +77,8 @@ class MainActivity : ComponentActivity() {
                 )
             ) {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    AemadsApp(context = this)
+                    val viewModel: DashboardViewModel = viewModel()
+                    AemadsApp(context = this, viewModel = viewModel)
                 }
             }
         }
@@ -100,24 +97,37 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun AemadsApp(context: MainActivity, viewModel: DashboardViewModel = viewModel()) {
+fun AemadsApp(context: MainActivity, viewModel: DashboardViewModel) {
     val navController = rememberNavController()
     NavHost(navController = navController, startDestination = "login") {
-        composable("login") { LoginScreen(navController) }
+        composable("login") { LoginScreen(navController, viewModel) }
+        composable("signup") { SignUpScreen(navController, viewModel) }
         composable("main") { MainScreen(context, viewModel) }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LoginScreen(navController: NavHostController) {
+fun LoginScreen(navController: NavHostController, viewModel: DashboardViewModel) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var plant by remember { mutableStateOf("Plant 1 - Body & Paint") }
+    var plant by remember { mutableStateOf("Shop 1 - Stamping & Press") }
     var expanded by remember { mutableStateOf(false) }
 
+    val loginState by viewModel.loginState.collectAsState()
+
+    LaunchedEffect(loginState) {
+        if (loginState is LoginState.Success) {
+            navController.navigate("main") { popUpTo("login") { inclusive = true } }
+            viewModel.resetLoginState()
+        }
+    }
+
     Column(
-        modifier = Modifier.fillMaxSize().background(DarkNavy).padding(24.dp),
+        modifier = Modifier.fillMaxSize().background(DarkNavy)
+            .padding(24.dp)
+            .verticalScroll(rememberScrollState())
+            .imePadding(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -154,7 +164,7 @@ fun LoginScreen(navController: NavHostController) {
         ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
             OutlinedTextField(
                 value = plant, onValueChange = {}, readOnly = true,
-                label = { Text("Select Plant Location") },
+                label = { Text("Select Shop Location") },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = Color.White, 
@@ -164,19 +174,130 @@ fun LoginScreen(navController: NavHostController) {
                 modifier = Modifier.fillMaxWidth().menuAnchor()
             )
             ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                DropdownMenuItem(text = { Text("Plant 1 - Body & Paint") }, onClick = { plant = "Plant 1 - Body & Paint"; expanded = false })
-                DropdownMenuItem(text = { Text("Plant 2 - Assembly") }, onClick = { plant = "Plant 2 - Assembly"; expanded = false })
+                DropdownMenuItem(text = { Text("Shop 1 - Stamping & Press") }, onClick = { plant = "Shop 1 - Stamping & Press"; expanded = false })
+                DropdownMenuItem(text = { Text("Shop 2 - Body & Welding") }, onClick = { plant = "Shop 2 - Body & Welding"; expanded = false })
+                DropdownMenuItem(text = { Text("Shop 3 - Paint Shop") }, onClick = { plant = "Shop 3 - Paint Shop"; expanded = false })
+                DropdownMenuItem(text = { Text("Shop 4 - General Assembly") }, onClick = { plant = "Shop 4 - General Assembly"; expanded = false })
             }
         }
         
         Spacer(modifier = Modifier.height(32.dp))
+
+        if (loginState is LoginState.Error) {
+            Text((loginState as LoginState.Error).message, color = CriticalRed, fontSize = 12.sp)
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
         Button(
-            onClick = { navController.navigate("main") { popUpTo("login") { inclusive = true } } },
+            onClick = { viewModel.login(email, password, plant) },
             colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
             modifier = Modifier.fillMaxWidth().height(50.dp),
-            shape = RoundedCornerShape(8.dp)
+            shape = RoundedCornerShape(8.dp),
+            enabled = loginState !is LoginState.Loading
         ) {
-            Text("Sign In to Control Room", color = DarkNavy, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            if (loginState is LoginState.Loading) {
+                CircularProgressIndicator(color = DarkNavy, modifier = Modifier.size(24.dp))
+            } else {
+                Text("Sign In to Control Room", color = DarkNavy, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        TextButton(onClick = { navController.navigate("signup") }) {
+            Text("Don't have an account? Sign Up", color = NeonCyan)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SignUpScreen(navController: NavHostController, viewModel: DashboardViewModel) {
+    var name by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+
+    val signUpState by viewModel.signUpState.collectAsState()
+
+    LaunchedEffect(signUpState) {
+        if (signUpState is SignUpState.Success) {
+            navController.popBackStack()
+            viewModel.resetSignUpState()
+        }
+    }
+
+    Column(
+        modifier = Modifier.fillMaxSize().background(DarkNavy)
+            .padding(24.dp)
+            .verticalScroll(rememberScrollState())
+            .imePadding(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(Icons.Default.PersonAdd, contentDescription = "Sign Up", tint = NeonCyan, modifier = Modifier.size(64.dp))
+        Spacer(modifier = Modifier.height(16.dp))
+        Text("CREATE ACCOUNT", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+        Text("Join AEMADS Platform", color = TextGray, fontSize = 14.sp)
+        
+        Spacer(modifier = Modifier.height(48.dp))
+        
+        OutlinedTextField(
+            value = name, onValueChange = { name = it },
+            label = { Text("Full Name") },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = Color.White, 
+                unfocusedTextColor = Color.White,
+                focusedBorderColor = NeonCyan
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        OutlinedTextField(
+            value = email, onValueChange = { email = it },
+            label = { Text("Email Address") },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = Color.White, 
+                unfocusedTextColor = Color.White,
+                focusedBorderColor = NeonCyan
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        OutlinedTextField(
+            value = password, onValueChange = { password = it },
+            label = { Text("Password") },
+            visualTransformation = PasswordVisualTransformation(),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = Color.White, 
+                unfocusedTextColor = Color.White,
+                focusedBorderColor = NeonCyan
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+        
+        Spacer(modifier = Modifier.height(32.dp))
+
+        if (signUpState is SignUpState.Error) {
+            Text((signUpState as SignUpState.Error).message, color = CriticalRed, fontSize = 12.sp)
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        Button(
+            onClick = { viewModel.signUp(name, email, password) },
+            colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
+            modifier = Modifier.fillMaxWidth().height(50.dp),
+            shape = RoundedCornerShape(8.dp),
+            enabled = signUpState !is SignUpState.Loading
+        ) {
+            if (signUpState is SignUpState.Loading) {
+                CircularProgressIndicator(color = DarkNavy, modifier = Modifier.size(24.dp))
+            } else {
+                Text("Register", color = DarkNavy, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        TextButton(onClick = { navController.popBackStack() }) {
+            Text("Back to Login", color = TextGray)
         }
     }
 }
@@ -184,6 +305,7 @@ fun LoginScreen(navController: NavHostController) {
 @Composable
 fun MainScreen(context: MainActivity, viewModel: DashboardViewModel) {
     var selectedTab by remember { mutableStateOf(0) }
+    val session by viewModel.currentUserSession.collectAsState()
     
     // Camera Logic
     var showReportDialog by remember { mutableStateOf(false) }
@@ -230,17 +352,6 @@ fun MainScreen(context: MainActivity, viewModel: DashboardViewModel) {
     }
     
     Scaffold(
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { cameraLauncher.launch() },
-                containerColor = NeonAmber,
-                shape = CircleShape,
-                modifier = Modifier.size(60.dp).offset(y = 40.dp) // Offset to dock into BottomAppBar nicely
-            ) {
-                Icon(Icons.Default.CameraAlt, "Report Damage", tint = DarkNavy, modifier = Modifier.size(32.dp))
-            }
-        },
-        floatingActionButtonPosition = FabPosition.Center,
         bottomBar = {
             BottomAppBar(
                 containerColor = SurfaceNavy,
@@ -249,9 +360,19 @@ fun MainScreen(context: MainActivity, viewModel: DashboardViewModel) {
             ) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { selectedTab = 0 }, modifier = Modifier.weight(1f)) { Icon(if (selectedTab == 0) Icons.Filled.Home else Icons.Outlined.Home, "Home", tint = if (selectedTab == 0) NeonCyan else TextGray) }
-                    IconButton(onClick = { selectedTab = 1 }, modifier = Modifier.weight(1f)) { Icon(if (selectedTab == 1) Icons.Filled.Analytics else Icons.Outlined.Analytics, "Analytics", tint = if (selectedTab == 1) NeonCyan else TextGray) }
-                    Spacer(modifier = Modifier.weight(1f)) // Empty space for FAB
-                    IconButton(onClick = { selectedTab = 3 }, modifier = Modifier.weight(1f)) { Icon(if (selectedTab == 3) Icons.Filled.History else Icons.Outlined.History, "History", tint = if (selectedTab == 3) NeonCyan else TextGray) }
+                    IconButton(onClick = { selectedTab = 1 }, modifier = Modifier.weight(1f)) { Icon(if (selectedTab == 1) Icons.Filled.Warning else Icons.Outlined.Warning, "Anomalies", tint = if (selectedTab == 1) NeonCyan else TextGray) }
+                    
+                    // FAB is now inline with other buttons
+                    FloatingActionButton(
+                        onClick = { cameraLauncher.launch() },
+                        containerColor = NeonAmber,
+                        shape = CircleShape,
+                        modifier = Modifier.size(56.dp)
+                    ) {
+                        Icon(Icons.Default.CameraAlt, "Report Damage", tint = DarkNavy, modifier = Modifier.size(28.dp))
+                    }
+
+                    IconButton(onClick = { selectedTab = 3 }, modifier = Modifier.weight(1f)) { Icon(if (selectedTab == 3) Icons.Filled.History else Icons.Outlined.History, "Reports", tint = if (selectedTab == 3) NeonCyan else TextGray) }
                     IconButton(onClick = { selectedTab = 4 }, modifier = Modifier.weight(1f)) { Icon(if (selectedTab == 4) Icons.Filled.Person else Icons.Outlined.Person, "Profile", tint = if (selectedTab == 4) NeonCyan else TextGray) }
                 }
             }
@@ -259,28 +380,36 @@ fun MainScreen(context: MainActivity, viewModel: DashboardViewModel) {
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding).fillMaxSize().background(DarkNavy)) {
             when (selectedTab) {
-                0 -> DashboardTab(viewModel)
-                1 -> AnalyticsTab(viewModel)
-                3 -> HistoryTab(viewModel)
-                4 -> ProfileTab()
+                0 -> DashboardTab(viewModel, session)
+                1 -> AnomalyHistoryTab(viewModel)
+                3 -> ReportsTab(viewModel)
+                4 -> ProfileTab(session)
             }
         }
     }
 }
 
 @Composable
-fun DashboardTab(viewModel: DashboardViewModel) {
+fun DashboardTab(viewModel: DashboardViewModel, session: UserSession?) {
     val dataList by viewModel.dataList.collectAsState()
     val alertState by viewModel.alertState.collectAsState()
     
+    val chartEntryModelProducer = remember { ChartEntryModelProducer() }
+    LaunchedEffect(dataList) {
+        val entries = dataList.mapIndexed { index, data -> FloatEntry(index.toFloat(), data.power_kw.toFloat()) }
+        if (entries.isNotEmpty()) {
+            chartEntryModelProducer.setEntries(entries)
+        }
+    }
+
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-        // TOP HEADER - Simplified
+        // TOP HEADER
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Default.AccountCircle, "Profile", tint = Color.White, modifier = Modifier.size(40.dp))
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text("Technician Portal", color = Color.White, fontWeight = FontWeight.Bold)
-                Text("Plant 1 - Body & Paint", color = TextGray, fontSize = 12.sp)
+                Text(session?.plant ?: "Global Overview", color = TextGray, fontSize = 12.sp)
             }
         }
         
@@ -300,6 +429,34 @@ fun DashboardTab(viewModel: DashboardViewModel) {
         }
         
         Spacer(modifier = Modifier.height(24.dp))
+        
+        // REALTIME CHART (Moved here from Analytics Tab)
+        Text("REALTIME POWER TREND (kW)", color = TextGray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(8.dp))
+        Card(modifier = Modifier.fillMaxWidth().height(220.dp), colors = CardDefaults.cardColors(containerColor = SurfaceNavy)) {
+            Box(modifier = Modifier.padding(16.dp)) {
+                if (dataList.isNotEmpty()) {
+                    Chart(
+                        chart = lineChart(
+                            lines = listOf(
+                                lineSpec(
+                                    lineColor = NeonCyan,
+                                    lineBackgroundShader = verticalGradient(arrayOf(NeonCyan.copy(alpha = 0.5f), Color.Transparent))
+                                )
+                            )
+                        ),
+                        chartModelProducer = chartEntryModelProducer, 
+                        startAxis = rememberStartAxis(), 
+                        bottomAxis = rememberBottomAxis()
+                    )
+                } else {
+                    Text("NO DATA", color = CriticalRed, modifier = Modifier.align(Alignment.Center))
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
         Text("ACTIVE SHOP HEATMAP", color = TextGray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(8.dp))
         
@@ -336,27 +493,37 @@ fun ShopHeatmapCard(name: String, color: Color) {
 }
 
 @Composable
-fun AnalyticsTab(viewModel: DashboardViewModel) {
-    val dataList by viewModel.dataList.collectAsState()
-    val chartEntryModelProducer = remember { ChartEntryModelProducer() }
-    
-    LaunchedEffect(dataList) {
-        val entries = dataList.mapIndexed { index, data -> FloatEntry(index.toFloat(), data.power_kw.toFloat()) }
-        if (entries.isNotEmpty()) {
-            chartEntryModelProducer.setEntries(entries)
-        }
-    }
+fun AnomalyHistoryTab(viewModel: DashboardViewModel) {
+    val anomalies by viewModel.anomalyHistory.collectAsState()
     
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Realtime Power Trend (kW)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-        Text("Waiting for generator.py data...", color = TextGray, fontSize = 12.sp)
+        Text("Anomaly Events History", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        Text("Track Case 2 (Spike) and Case 3 (Drift)", color = TextGray, fontSize = 12.sp)
         Spacer(modifier = Modifier.height(16.dp))
-        Card(modifier = Modifier.fillMaxWidth().height(300.dp), colors = CardDefaults.cardColors(containerColor = SurfaceNavy)) {
-            Box(modifier = Modifier.padding(16.dp)) {
-                if (dataList.isNotEmpty()) {
-                    Chart(chart = lineChart(), chartModelProducer = chartEntryModelProducer, startAxis = rememberStartAxis(), bottomAxis = rememberBottomAxis())
-                } else {
-                    Text("NO DATA (Check Python Script)", color = CriticalRed, modifier = Modifier.align(Alignment.Center))
+        
+        if (anomalies.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("No anomalies detected yet.", color = TextGray)
+            }
+        } else {
+            LazyColumn {
+                items(anomalies) { anomaly ->
+                    Card(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), colors = CardDefaults.cardColors(containerColor = SurfaceNavy)) {
+                        Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Warning, 
+                                contentDescription = "Warning", 
+                                tint = if (anomaly.type.contains("Spike")) CriticalRed else NeonAmber,
+                                modifier = Modifier.size(32.dp)
+                            )
+                            Spacer(Modifier.width(16.dp))
+                            Column {
+                                Text(anomaly.type, color = Color.White, fontWeight = FontWeight.Bold)
+                                Text("${anomaly.liniName} | Trigger: ${anomaly.triggerValue}", color = TextGray, fontSize = 12.sp)
+                                Text(anomaly.timestamp, color = NeonCyan, fontSize = 11.sp)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -364,7 +531,7 @@ fun AnalyticsTab(viewModel: DashboardViewModel) {
 }
 
 @Composable
-fun HistoryTab(viewModel: DashboardViewModel) {
+fun ReportsTab(viewModel: DashboardViewModel) {
     val reports by viewModel.reportList.collectAsState()
     
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
@@ -397,18 +564,18 @@ fun HistoryTab(viewModel: DashboardViewModel) {
 }
 
 @Composable
-fun ProfileTab() {
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+fun ProfileTab(userSession: UserSession?) {
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp).imePadding(), horizontalAlignment = Alignment.CenterHorizontally) {
         Icon(Icons.Default.AccountCircle, "Profile", tint = Color.White, modifier = Modifier.size(100.dp))
         Spacer(Modifier.height(16.dp))
-        Text("John Doe", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 24.sp)
-        Text("Senior Maintenance Technician", color = NeonCyan)
+        Text(userSession?.name ?: "Technician", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 24.sp)
+        Text("Maintenance Technician", color = NeonCyan)
         Spacer(Modifier.height(32.dp))
         Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = SurfaceNavy)) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Employee ID: EMP-98234", color = Color.White)
+                Text("Email: ${userSession?.email ?: "N/A"}", color = Color.White)
                 Divider(modifier = Modifier.padding(vertical = 8.dp), color = DarkNavy)
-                Text("Assigned Plant: Plant 1 - Body & Paint", color = Color.White)
+                Text("Current Context: ${userSession?.plant ?: "N/A"}", color = Color.White)
             }
         }
     }

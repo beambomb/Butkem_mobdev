@@ -4,7 +4,7 @@ import random
 import datetime
 
 # ==========================================
-# KONFIGURASI SUPABASE (ISI NANTI)
+# KONFIGURASI SUPABASE
 # ==========================================
 SUPABASE_URL = "https://jmfawibrlwiebqdyhdsk.supabase.co/rest/v1/energy_logs"
 SUPABASE_KEY = "sb_publishable_260CCSS5agIPHgDAKh04JA_u3Mps_Ho"
@@ -17,79 +17,108 @@ HEADERS = {
 }
 
 def send_to_supabase(payload):
-    if "ISI_DENGAN" in SUPABASE_URL:
-        print("[WARNING] Supabase URL & Key belum diisi. Hanya print ke console.")
-        print(payload)
-        return
-        
     try:
         response = requests.post(SUPABASE_URL, json=payload, headers=HEADERS)
         if response.status_code in [200, 201]:
-            print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] Sukses kirim data: {payload['power_kw']} kW")
+            print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] {payload['lini_name']} | {payload['power_kw']} kW")
         else:
-            print(f"[ERROR] Gagal kirim: {response.text}")
+            print(f"[ERROR] Gagal kirim {payload['lini_name']}: {response.text}")
     except Exception as e:
         print(f"[ERROR] Koneksi bermasalah: {e}")
 
 def main():
-    print("[START] Memulai Mesin Simulasi Pabrik Otomotif (AEMADS)...")
-    print("Menunggu data dikirim setiap 2 detik...\n")
+    print("[START] Memulai Mesin Simulasi 4 Shop Otomotif (AEMADS)...")
+    print("Mengirimkan data paralel untuk 4 Shop setiap 2 detik...\n")
     
     counter = 0
-    drift_cycle_count = 0
+    body_drift_count = 0
     
     while True:
-        # BASELINE CASE 1 (Normal)
-        power_kw = round(random.uniform(80.0, 110.0), 2)
-        power_factor = round(random.uniform(0.88, 0.94), 2)
-        output_qty = 5
-        oee_score = round(random.uniform(85.0, 95.0), 1)
-        thd_value = round(random.uniform(2.0, 4.5), 1)
-        lini_name = "Lini Assembly"
+        payloads = []
         
-        # Cek Case 2: Spike Anomaly (Kelipatan 10)
+        # ----------------------------------------------------
+        # SHOP 1: STAMPING & PRESS (Base: 50 kW)
+        # Rentan terjadi Spike Anomaly (Case 2) akibat hentakan mesin press
+        # ----------------------------------------------------
+        s1_power = round(random.uniform(45.0, 55.0), 2)
+        s1_pf = round(random.uniform(0.85, 0.90), 2)
+        s1_oee = round(random.uniform(85.0, 95.0), 1)
+        s1_thd = round(random.uniform(4.0, 6.0), 1)
+        
         if counter > 0 and counter % 10 == 0:
-            print("[ALARM] [CASE 2] SPIKE ANOMALY TERDETEKSI!")
-            power_kw = round(random.uniform(270.0, 290.0), 2)
-            power_factor = round(random.uniform(0.40, 0.48), 2)
-            output_qty = 0
-            oee_score = round(random.uniform(20.0, 30.0), 1) # OEE anjlok
-            lini_name = "Lini Stamping"
+            print("[ALARM] [STAMPING] SPIKE ANOMALY TERDETEKSI!")
+            s1_power = round(random.uniform(200.0, 250.0), 2)
+            s1_pf = round(random.uniform(0.40, 0.50), 2)
+            s1_oee = round(random.uniform(30.0, 40.0), 1)
             
-        # Cek Case 3: Drift Anomaly (Kelipatan 13, bertahan 3 siklus)
-        if counter > 0 and (counter % 13 == 0 or 0 < drift_cycle_count < 3):
-            if counter % 13 == 0:
-                drift_cycle_count = 1
-                
-            print(f"[WARNING] [CASE 3] DRIFT ANOMALY (Siklus {drift_cycle_count}/3)")
-            # Degradasi linier bertambah
-            power_kw = power_kw + (15.0 * drift_cycle_count)
-            power_factor = power_factor - (0.04 * drift_cycle_count)
-            oee_score = oee_score - (5.0 * drift_cycle_count)
-            thd_value = round(random.uniform(15.0, 25.0), 1) # Harmonisa melonjak tajam
-            lini_name = "Lini Welding"
+        payloads.append({
+            "lini_name": "Shop 1 - Stamping & Press",
+            "power_kw": s1_power, "power_factor": s1_pf, "output_qty": 10,
+            "sec_val": round(s1_power/10, 2), "oee_score": s1_oee, "thd_value": s1_thd
+        })
+        
+        # ----------------------------------------------------
+        # SHOP 2: BODY & WELDING (Base: 100 kW)
+        # Rentan terjadi Drift Anomaly (Case 3) dan tingginya THD akibat robot las
+        # ----------------------------------------------------
+        s2_power = round(random.uniform(90.0, 110.0), 2)
+        s2_pf = round(random.uniform(0.80, 0.85), 2)
+        s2_oee = round(random.uniform(80.0, 90.0), 1)
+        s2_thd = round(random.uniform(8.0, 12.0), 1)
+        
+        if counter > 0 and (counter % 13 == 0 or 0 < body_drift_count < 3):
+            if counter % 13 == 0: body_drift_count = 1
+            print(f"[WARNING] [BODY WELDING] DRIFT ANOMALY (Siklus {body_drift_count}/3)")
+            s2_power += (20.0 * body_drift_count)
+            s2_pf -= (0.05 * body_drift_count)
+            s2_oee -= (5.0 * body_drift_count)
+            s2_thd = round(random.uniform(18.0, 25.0), 1)
+            body_drift_count += 1
+            if body_drift_count >= 3: body_drift_count = 0
             
-            drift_cycle_count += 1
-            if drift_cycle_count >= 3:
-                drift_cycle_count = 0 # Reset setelah 3 siklus
+        payloads.append({
+            "lini_name": "Shop 2 - Body & Welding",
+            "power_kw": s2_power, "power_factor": s2_pf, "output_qty": 5,
+            "sec_val": round(s2_power/5, 2), "oee_score": s2_oee, "thd_value": s2_thd
+        })
 
-        # Kalkulasi Specific Energy Consumption (SEC)
-        sec_val = round((power_kw / output_qty) if output_qty > 0 else power_kw, 2)
+        # ----------------------------------------------------
+        # SHOP 3: PAINT SHOP (Base: 250 kW)
+        # Konsumsi paling besar, oven pemanas, jarang spike, sangat stabil
+        # ----------------------------------------------------
+        s3_power = round(random.uniform(240.0, 260.0), 2)
+        s3_pf = round(random.uniform(0.92, 0.98), 2)
+        s3_oee = round(random.uniform(92.0, 98.0), 1)
+        s3_thd = round(random.uniform(1.5, 3.0), 1)
         
-        # Susun Payload
-        payload = {
-            "lini_name": lini_name,
-            "power_kw": power_kw,
-            "power_factor": power_factor,
-            "output_qty": output_qty,
-            "sec_val": sec_val,
-            "oee_score": oee_score,
-            "thd_value": thd_value
-        }
+        payloads.append({
+            "lini_name": "Shop 3 - Paint Shop",
+            "power_kw": s3_power, "power_factor": s3_pf, "output_qty": 2,
+            "sec_val": round(s3_power/2, 2), "oee_score": s3_oee, "thd_value": s3_thd
+        })
+
+        # ----------------------------------------------------
+        # SHOP 4: GENERAL ASSEMBLY (Base: 50 kW)
+        # Konsumsi rendah, motor listrik dan alat ringan, paling stabil
+        # ----------------------------------------------------
+        s4_power = round(random.uniform(45.0, 55.0), 2)
+        s4_pf = round(random.uniform(0.90, 0.95), 2)
+        s4_oee = round(random.uniform(90.0, 96.0), 1)
+        s4_thd = round(random.uniform(2.0, 4.0), 1)
         
-        send_to_supabase(payload)
+        payloads.append({
+            "lini_name": "Shop 4 - General Assembly",
+            "power_kw": s4_power, "power_factor": s4_pf, "output_qty": 4,
+            "sec_val": round(s4_power/4, 2), "oee_score": s4_oee, "thd_value": s4_thd
+        })
+
+        # KIRIM SEMUA PAYLOAD
+        for p in payloads:
+            send_to_supabase(p)
+            
+        print("-" * 50)
         
-        counter += 2 # Karena sleep 2 detik
+        counter += 2
         time.sleep(2)
 
 if __name__ == "__main__":
